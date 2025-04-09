@@ -32,6 +32,38 @@ https://natnps.com/
 
 
 ## 更新日志  
+
+
+
+
+- 2025-01-23  v0.26.22  
+     优化：
+    本项目是在 `yisier/nps` 的基础上进行修改而来，主要在 HTTP、TCP 等代理上加入了以 IP 为基础的安全验证要求。类似于 DNSTO 和飞牛云在直接访问前的跳转机制，用户需要输入密码后才能访问具体的端口和应用。用户可以自定义和输入密码来进行后续的访问，或者在代理上设置豁免。
+    
+    在 `nps` 层面增加了一层验证，可以直接使用原版的 `npc` 来与 `nps` 通信，主要目的是提高代理的安全系数，防止端口或应用直接暴露在公网被扫描或渗透。
+    
+    在 `nps.conf` 中可以添加配置项：
+    
+    ```conf
+    global_auth_ip_ttl_hours = 72
+    ```
+    
+    登录页面为 `http://ip：后台端口//nps_global_auth`，使用 HTTP 代理时会自动跳转到这个页面，而 TCP 代理需要手动进行跳转，没有在登录页上弄链接是防止扫描工具扫到了又来爆破。
+
+
+    
+![1744193272100](https://github.com/user-attachments/assets/0ddf9fb2-0a92-4e1b-944f-19810ae4a770)
+
+![1744193316169](https://github.com/user-attachments/assets/8c8dc5fb-4c10-45cd-8b52-06b82dcd261c)
+
+
+![1744193170897](https://github.com/user-attachments/assets/9a8c555b-cecd-4d34-a0ee-ec499526afce)
+
+
+
+-下面是yisier大佬更新的，我改的东西在上面
+
+
 - 2025-01-23  v0.26.22  
   优化：
   - 客户端注册系统服务时，（新版客户端注册方式，非 install 命令） 将按照 `npc-[vkey].log` 格式保存日志，每个客户端VKEY单独一个日志文件，windows 日志位于 `npc.exe` 同级目录下，linux 位于 `/var/log/`目录。  
