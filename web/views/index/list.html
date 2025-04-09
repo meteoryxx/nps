@@ -38,6 +38,33 @@
     name = '{{.name}}:'.replace(/\s*/g,"")
     $('#langtag').attr('langtag','page-list' + name.replace(/:.*/,"")).next().text(name.split(":")[1])
 
+    // 新增：切换免验证状态的函数
+    function toggleBypassStatus(taskId, currentStatus) {
+        var newStatus = !currentStatus;
+        // 发送 AJAX 请求到后端
+        $.ajax({
+            type: "POST",
+            url: "{{.web_base_url}}/index/togglebypass", // 新的后端接口
+            data: {
+                id: taskId,
+                status: newStatus
+            },
+            dataType: "json",
+            success: function(response) {
+                if (response.status === 1) {
+                    // 成功后刷新表格
+                    $('#table').bootstrapTable('refresh');
+                    toastr.success('状态更新成功!');
+                } else {
+                    toastr.error('状态更新失败: ' + response.msg);
+                }
+            },
+            error: function() {
+                toastr.error('请求失败，请检查网络或联系管理员。');
+            }
+        });
+    }
+
     /*bootstrap table*/
     $('#table').bootstrapTable({
         toolbar: "#toolbar",
@@ -47,8 +74,8 @@
             return {
                 "offset": params.offset,
                 "limit": params.limit,
-                "type":{{.type}},
-                "client_id":{{.client_id}},
+                "type": "{{.type}}",
+                "client_id": {{.client_id}},
                 "search": params.search,
                 "sort": params.sort,
                 "order": params.order
@@ -208,6 +235,20 @@
                     } else {
                         return '<span class="badge badge-badge" langtag="word-offline"></span>'
                     }
+                }
+            },
+            {
+                field: 'bypass_global_password',
+                title: '<span langtag="word-bypassglobalpassword">免验证</span>',
+                align: 'center',
+                halign: 'center',
+                visible: true,
+                formatter: function (value, row, index) {
+                    var iconClass = value ? 'fa-check text-success' : 'fa-times text-secondary';
+                    var titleText = value ? '当前免验证，点击关闭' : '当前需要验证，点击开启';
+                    return '<a href="javascript:void(0);" onclick="toggleBypassStatus(' + row.Id + ', ' + value + ')" title="' + titleText + '">' +
+                           '<i class="fa ' + iconClass + '"></i>' +
+                           '</a>';
                 }
             },
             {

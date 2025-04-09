@@ -43,6 +43,14 @@
                             <input value="{{.t.Remark}}" class="form-control" type="text" name="remark" placeholder="" langtag="info-unrestricted">
                         </div>
                     </div>
+
+                    <div class="form-group">
+                        <label class="col-sm-2 control-label" langtag="word-bypassglobalpassword">免全局验证</label>
+                        <div class="col-sm-9">
+                            <input type="checkbox" name="bypass_global_password" value="true" {{if .t.BypassGlobalPassword}}checked{{end}}>
+                            <span class="help-block m-b-none" langtag="info-bypassglobalpassword">勾选后，通过此隧道访问时将跳过全局密码验证。</span>
+                        </div>
+                    </div>
                 {{if eq true .allow_multi_ip}}
                     <div class="form-group" id="server_ip">
                         <label class="col-sm-2 control-label font-bold" langtag="word-serverip"></label>

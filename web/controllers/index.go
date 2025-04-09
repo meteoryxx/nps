@@ -4,6 +4,7 @@ import (
 	"ehang.io/nps/lib/file"
 	"ehang.io/nps/server"
 	"ehang.io/nps/server/tool"
+	"github.com/astaxie/beego/logs"
 
 	"github.com/astaxie/beego"
 )
@@ -94,17 +95,18 @@ func (s *IndexController) Add() {
 	} else {
 		id := int(file.GetDb().JsonDb.GetTaskId())
 		t := &file.Tunnel{
-			Port:      s.GetIntNoErr("port"),
-			ServerIp:  s.getEscapeString("server_ip"),
-			Mode:      s.getEscapeString("type"),
-			Target:    &file.Target{TargetStr: s.getEscapeString("target"), LocalProxy: s.GetBoolNoErr("local_proxy")},
-			Id:        id,
-			Status:    true,
-			Remark:    s.getEscapeString("remark"),
-			Password:  s.getEscapeString("password"),
-			LocalPath: s.getEscapeString("local_path"),
-			StripPre:  s.getEscapeString("strip_pre"),
-			Flow:      &file.Flow{},
+			Port:                 s.GetIntNoErr("port"),
+			ServerIp:             s.getEscapeString("server_ip"),
+			Mode:                 s.getEscapeString("type"),
+			Target:               &file.Target{TargetStr: s.getEscapeString("target"), LocalProxy: s.GetBoolNoErr("local_proxy")},
+			Id:                   id,
+			Status:               true,
+			Remark:               s.getEscapeString("remark"),
+			Password:             s.getEscapeString("password"),
+			LocalPath:            s.getEscapeString("local_path"),
+			StripPre:             s.getEscapeString("strip_pre"),
+			Flow:                 &file.Flow{},
+			BypassGlobalPassword: s.GetBoolNoErr("bypass_global_password"),
 		}
 
 		if t.Port <= 0 {
@@ -184,6 +186,7 @@ func (s *IndexController) Edit() {
 			t.StripPre = s.getEscapeString("strip_pre")
 			t.Remark = s.getEscapeString("remark")
 			t.Target.LocalProxy = s.GetBoolNoErr("local_proxy")
+			t.BypassGlobalPassword = s.GetBoolNoErr("bypass_global_password")
 			file.GetDb().UpdateTask(t)
 			server.StopServer(t.Id)
 			server.StartTask(t.Id)
@@ -261,18 +264,19 @@ func (s *IndexController) AddHost() {
 	} else {
 		id := int(file.GetDb().JsonDb.GetHostId())
 		h := &file.Host{
-			Id:           id,
-			Host:         s.getEscapeString("host"),
-			Target:       &file.Target{TargetStr: s.getEscapeString("target"), LocalProxy: s.GetBoolNoErr("local_proxy")},
-			HeaderChange: s.getEscapeString("header"),
-			HostChange:   s.getEscapeString("hostchange"),
-			Remark:       s.getEscapeString("remark"),
-			Location:     s.getEscapeString("location"),
-			Flow:         &file.Flow{},
-			Scheme:       s.getEscapeString("scheme"),
-			KeyFilePath:  s.getEscapeString("key_file_path"),
-			CertFilePath: s.getEscapeString("cert_file_path"),
-			AutoHttps:    s.GetBoolNoErr("AutoHttps"),
+			Id:                   id,
+			Host:                 s.getEscapeString("host"),
+			Target:               &file.Target{TargetStr: s.getEscapeString("target"), LocalProxy: s.GetBoolNoErr("local_proxy")},
+			HeaderChange:         s.getEscapeString("header"),
+			HostChange:           s.getEscapeString("hostchange"),
+			Remark:               s.getEscapeString("remark"),
+			Location:             s.getEscapeString("location"),
+			Flow:                 &file.Flow{},
+			Scheme:               s.getEscapeString("scheme"),
+			KeyFilePath:          s.getEscapeString("key_file_path"),
+			CertFilePath:         s.getEscapeString("cert_file_path"),
+			AutoHttps:            s.GetBoolNoErr("AutoHttps"),
+			BypassGlobalPassword: s.GetBoolNoErr("bypass_global_password"),
 		}
 		var err error
 		if h.Client, err = file.GetDb().GetClient(s.GetIntNoErr("client_id")); err != nil {
@@ -330,8 +334,47 @@ func (s *IndexController) EditHost() {
 			h.CertFilePath = s.getEscapeString("cert_file_path")
 			h.Target.LocalProxy = s.GetBoolNoErr("local_proxy")
 			h.AutoHttps = s.GetBoolNoErr("AutoHttps")
+			h.BypassGlobalPassword = s.GetBoolNoErr("bypass_global_password")
 			file.GetDb().JsonDb.StoreHostToJsonFile()
 		}
 		s.AjaxOk("modified success")
+	}
+}
+
+func (s *IndexController) ToggleBypassStatus() {
+	id := s.GetIntNoErr("id")
+	newStatus := s.GetBoolNoErr("status")
+
+	if t, err := file.GetDb().GetTask(id); err != nil {
+		logs.Warn("ToggleBypassStatus failed: Task %d not found, error: %v", id, err)
+		s.AjaxErr("任务不存在")
+		return
+	} else {
+		t.BypassGlobalPassword = newStatus
+		if err := file.GetDb().UpdateTask(t); err != nil {
+			logs.Error("ToggleBypassStatus failed: Error updating task %d, error: %v", id, err)
+			s.AjaxErr("更新失败: " + err.Error())
+			return
+		}
+		logs.Info("Tunnel %d BypassGlobalPassword status updated to %v", id, newStatus)
+		s.AjaxOk("更新成功")
+	}
+}
+
+// 新增：切换域名记录免验证状态
+func (s *IndexController) ToggleHostBypassStatus() {
+	id := s.GetIntNoErr("id")
+	newStatus := s.GetBoolNoErr("status")
+
+	if h, err := file.GetDb().GetHostById(id); err != nil {
+		logs.Warn("ToggleHostBypassStatus failed: Host %d not found, error: %v", id, err)
+		s.AjaxErr("域名记录不存在")
+		return
+	} else {
+		h.BypassGlobalPassword = newStatus
+		// 保存对 Host 记录的更改
+		file.GetDb().JsonDb.StoreHostToJsonFile() // 确保更改被持久化
+		logs.Info("Host %d BypassGlobalPassword status updated to %v", id, newStatus)
+		s.AjaxOk("更新成功")
 	}
 }

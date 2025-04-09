@@ -762,6 +762,26 @@
 		<en-US>Last Online Time</en-US>
 	</lang>
 
+	<lang id="word-bypassglobalpassword">
+		<zh-CN>免验证</zh-CN>
+		<en-US>bypass global password</en-US>
+	</lang>
+
+	<lang id="word-globalpassword">
+		<zh-CN>全局密码</zh-CN>
+		<en-US>global password</en-US>
+	</lang>
+	<lang id="info-descglobalpassword">
+		<zh-CN>设置全局密码</zh-CN>
+		<en-US> desc global password</en-US>
+	</lang>
+	<lang id="info-bypassglobalpassword">
+		<zh-CN>免验证</zh-CN>
+		<en-US>bypass global password</en-US>
+	</lang>
+
+
+
 	<confirm>
 		<lang id="delete">
 			<zh-CN>你确定你要删除它吗？</zh-CN>

@@ -1,7 +1,6 @@
 package server
 
 import (
-	"ehang.io/nps/lib/version"
 	"errors"
 	"math"
 	"os"
@@ -10,6 +9,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"ehang.io/nps/lib/version"
 
 	"ehang.io/nps/bridge"
 	"ehang.io/nps/lib/common"
@@ -31,6 +32,20 @@ var (
 
 func init() {
 	RunList = sync.Map{}
+
+	// Initialize Global IP Authentication Cache from config
+	// Read TTL from nps.conf, default to 48 hours if not set or invalid
+	authTTLDurationHours, err := beego.AppConfig.Int("global_auth_ip_ttl_hours")
+	if err != nil || authTTLDurationHours <= 0 {
+		authTTLDurationHours = 48 // Default to 48 hours
+		logs.Info("global_auth_ip_ttl_hours not configured or invalid in nps.conf, using default: %d hours", authTTLDurationHours)
+	}
+	authTTL := time.Duration(authTTLDurationHours) * time.Hour
+
+	// Cleanup interval (can also be made configurable if needed)
+	cleanupInterval := 5 * time.Minute
+
+	proxy.InitGlobalIpAuthCache(authTTL, cleanupInterval)
 }
 
 // init task from db

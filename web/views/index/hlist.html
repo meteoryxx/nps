@@ -36,6 +36,61 @@
 </div>
 
 <script>
+
+        // 新增：切换免验证状态的函数
+        function toggleBypassStatus(taskId, currentStatus) {
+        var newStatus = !currentStatus;
+        // 发送 AJAX 请求到后端
+        $.ajax({
+            type: "POST",
+            url: "{{.web_base_url}}/index/togglebypass", // 新的后端接口
+            data: {
+                id: taskId,
+                status: newStatus
+            },
+            dataType: "json",
+            success: function(response) {
+                if (response.status === 1) {
+                    // 成功后刷新表格
+                    $('#table').bootstrapTable('refresh');
+                    toastr.success('状态更新成功!');
+                } else {
+                    toastr.error('状态更新失败: ' + response.msg);
+                }
+            },
+            error: function() {
+                toastr.error('请求失败，请检查网络或联系管理员。');
+            }
+        });
+    }
+
+    // 新增：切换域名解析免验证状态的函数
+    function toggleHostBypassStatus(hostId, currentStatus) {
+        var newStatus = !currentStatus;
+        // 发送 AJAX 请求到后端
+        $.ajax({
+            type: "POST",
+            url: "{{.web_base_url}}/index/togglehostbypass", // 新的后端接口，你需要实现这个接口
+            data: {
+                id: hostId,
+                status: newStatus
+            },
+            dataType: "json",
+            success: function(response) {
+                if (response.status === 1) {
+                    // 成功后刷新表格
+                    $('#table').bootstrapTable('refresh');
+                    toastr.success('域名免验证状态更新成功!');
+                } else {
+                    toastr.error('域名免验证状态更新失败: ' + response.msg);
+                }
+            },
+            error: function() {
+                toastr.error('请求失败，请检查网络或联系管理员。');
+            }
+        });
+    }
+
     /*bootstrap table*/
     $('#table').bootstrapTable({
         toolbar: "#toolbar",
@@ -149,6 +204,21 @@
                     } else {
                         return '<span class="badge badge-badge" langtag="word-offline"></span>'
                     }
+                }
+            },
+            {
+                field: 'bypass_global_password',
+                title: '<span langtag="word-bypassglobalpassword">免验证</span>',
+                align: 'center',
+                halign: 'center',
+                visible: true,
+                formatter: function (value, row, index) {
+                    var iconClass = value ? 'fa-check text-success' : 'fa-times text-secondary';
+                    var titleText = value ? '当前免验证，点击关闭' : '当前需要验证，点击开启';
+                    // 添加 onclick 事件调用 toggleHostBypassStatus
+                    return '<a href="javascript:void(0);" onclick="toggleHostBypassStatus(' + row.Id + ', ' + value + ')" title="' + titleText + '">' +
+                           '<i class="fa ' + iconClass + '"></i>' +
+                           '</a>';
                 }
             },
             {

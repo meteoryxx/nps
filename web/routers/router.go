@@ -28,8 +28,11 @@ func Init() {
 		beego.AutoRouter(&controllers.ClientController{})
 		beego.AutoRouter(&controllers.AuthController{})
 		beego.AutoRouter(&controllers.GlobalController{})
+		beego.Router("/index/togglebypass", &controllers.IndexController{}, "post:ToggleBypassStatus")         // 添加新路由
+		beego.Router("/index/togglehostbypass", &controllers.IndexController{}, "post:ToggleHostBypassStatus") // 添加新路由
 
 		// Global Authentication Route
 		beego.Router("/nps_global_auth", &controllers.AuthController{}, "*:GlobalAuth")
+
 	}
 }

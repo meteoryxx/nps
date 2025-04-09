@@ -3,6 +3,7 @@ package proxy
 import (
 	"bufio"
 	"crypto/tls"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -20,6 +21,7 @@ import (
 	"ehang.io/nps/lib/file"
 	"ehang.io/nps/lib/goroutine"
 	"ehang.io/nps/server/connection"
+	"github.com/astaxie/beego"
 	"github.com/astaxie/beego/logs"
 )
 
@@ -118,10 +120,39 @@ func (s *httpServer) handleTunneling(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 全局密码认证检查 (在获取 host 之后)
-	if CheckGlobalPasswordAuth(r.RemoteAddr) {
+	// 如果 host 设置了 BypassGlobalPassword，则跳过检查
+	if host != nil && !host.BypassGlobalPassword && CheckGlobalPasswordAuth(r.RemoteAddr) {
 		// 如果需要认证，并且请求的不是验证路径本身
 		if !strings.HasPrefix(r.URL.Path, "/nps_global_auth") {
-			http.Redirect(w, r, "/nps_global_auth?return_url="+url.QueryEscape(r.URL.String()), http.StatusFound)
+			// 获取 web 管理端口
+			webPort, err := beego.AppConfig.Int("web_port")
+			if err != nil {
+				logs.Error("Failed to get web_port from config:", err)
+				http.Error(w, "Server configuration error", http.StatusInternalServerError)
+				return
+			}
+
+			// 获取协议
+			scheme := "http"
+			if r.TLS != nil {
+				scheme = "https"
+			}
+
+			// 获取主机名 (去除端口)
+			hostname := r.Host
+			if h, _, err := net.SplitHostPort(r.Host); err == nil {
+				hostname = h
+			}
+
+			// 构造完整的原始 URL
+			// 使用 r.RequestURI 通常更直接地反映浏览器地址栏中的路径和查询部分
+			originalURL := fmt.Sprintf("%s://%s%s", scheme, r.Host, r.RequestURI)
+
+			// 构造重定向 URL，将完整的原始 URL 编码后放入 return_url
+			redirectURL := fmt.Sprintf("%s://%s:%d/nps_global_auth?return_url=%s", scheme, hostname, webPort, url.QueryEscape(originalURL))
+
+			// 重定向到 web 管理端口
+			http.Redirect(w, r, redirectURL, http.StatusFound)
 			return
 		}
 		// 如果是验证路径，则继续处理（下面会有专门处理验证请求的逻辑）
@@ -146,20 +177,6 @@ func (s *httpServer) handleTunneling(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *httpServer) handleHttp(c *conn.Conn, r *http.Request) {
-	// 全局密码认证检查 (放在最前面)
-	if CheckGlobalPasswordAuth(c.RemoteAddr().String()) {
-		logs.Warn("Global password authentication required for HTTP connection from %s, closing.", c.RemoteAddr().String())
-		s.writeConnFail(c.Conn) // 尝试发送错误信息
-		c.Close()
-		return
-	}
-	// 判断访问地址是否在全局黑名单内 (放在全局密码之后)
-	if IsGlobalBlackIp(c.RemoteAddr().String()) {
-		logs.Warn("IP %s is in global black list, closing connection.", c.RemoteAddr().String())
-		c.Close()
-		return
-	}
-
 	var (
 		host       *file.Host
 		target     net.Conn
@@ -193,6 +210,31 @@ reset:
 
 	if host, err = file.GetDb().GetInfoByHost(r.Host, r); err != nil {
 		logs.Notice("the url %s %s %s can't be parsed!, host %s, url %s, remote address %s", r.URL.Scheme, r.Host, r.RequestURI, r.Host, r.URL.Path, remoteAddr)
+		// 如果无法解析 host，则默认需要检查全局密码 (如果已设置)
+		if CheckGlobalPasswordAuth(c.RemoteAddr().String()) {
+			logs.Warn("Global password authentication required (host not found) for HTTP connection from %s, closing.", c.RemoteAddr().String())
+			s.writeConnFail(c.Conn)
+			c.Close()
+			return
+		}
+		// 如果不需要全局密码，也关闭连接，因为 host 无法解析
+		c.Close()
+		return
+	}
+
+	// 全局密码认证检查 (如果 host 未设置 Bypass)
+	if !host.BypassGlobalPassword && CheckGlobalPasswordAuth(c.RemoteAddr().String()) {
+		// 对于 handleHttp (非 Upgrade)，理论上已经在 handleTunneling 重定向了。
+		// 但如果直接访问 IP:port，可能到这里。此时无法重定向，直接关闭。
+		logs.Warn("Global password authentication required for HTTP connection (host: %s) from %s, closing.", host.Host, c.RemoteAddr().String())
+		s.writeConnFail(c.Conn)
+		c.Close()
+		return
+	}
+
+	// 判断访问地址是否在全局黑名单内
+	if IsGlobalBlackIp(c.RemoteAddr().String()) {
+		logs.Warn("IP %s is in global black list, closing connection.", c.RemoteAddr().String())
 		c.Close()
 		return
 	}
@@ -211,12 +253,6 @@ reset:
 	}
 	if targetAddr, err = host.Target.GetRandomTarget(); err != nil {
 		logs.Warn(err.Error())
-		return
-	}
-
-	// 判断访问地址是否在黑名单内
-	if common.IsBlackIp(c.RemoteAddr().String(), host.Client.VerifyKey, host.Client.BlackIpList) {
-		c.Close()
 		return
 	}
 

@@ -24,7 +24,7 @@ type NetBridge interface {
 	SendLinkInfo(clientId int, link *conn.Link, t *file.Tunnel) (target net.Conn, err error)
 }
 
-//BaseServer struct
+// BaseServer struct
 type BaseServer struct {
 	id           int
 	bridge       NetBridge
@@ -52,9 +52,17 @@ var (
 )
 
 // InitGlobalIpAuthCache initializes the global IP authentication cache.
-// ควรเรียกใช้ฟังก์ชันนี้เพียงครั้งเดียวเมื่อเริ่มต้นเซิร์ฟเวอร์
+// It should be called once during server startup.
 func InitGlobalIpAuthCache(authTTL time.Duration, cleanupInterval time.Duration) {
 	once.Do(func() {
+		// Ensure minimum intervals to prevent issues
+		if authTTL <= 0 {
+			authTTL = 48 * time.Hour // Default to 48 hours if invalid
+			logs.Warn("Invalid global_auth_ip_ttl provided, defaulting to %v", authTTL)
+		}
+		if cleanupInterval <= 0 {
+			cleanupInterval = 5 * time.Minute // Default cleanup interval
+		}
 		logs.Info("Initializing Global IP Authentication Cache with TTL: %v, Cleanup Interval: %v", authTTL, cleanupInterval)
 		globalIpAuthCache = &IpAuthCache{
 			cache:           make(map[string]IpAuthCacheEntry),
@@ -66,11 +74,14 @@ func InitGlobalIpAuthCache(authTTL time.Duration, cleanupInterval time.Duration)
 }
 
 // GetGlobalIpAuthCache returns the singleton instance of the IP authentication cache.
+// Ensure InitGlobalIpAuthCache is called before using this function.
 func GetGlobalIpAuthCache() *IpAuthCache {
-	// Initialize with default values if not already initialized
+	// Initialization should now happen at server startup
 	if globalIpAuthCache == nil {
-		// Default TTL 1 hour, Cleanup every 5 minutes
-		InitGlobalIpAuthCache(1*time.Hour, 5*time.Minute)
+		// This case should ideally not happen if Init is called correctly at startup.
+		// Log a warning and initialize with a safe default, but configuration won't be applied.
+		logs.Critical("GetGlobalIpAuthCache called before InitGlobalIpAuthCache! Initializing with default TTL (48h). Configuration from nps.conf will NOT be applied for IP Auth TTL.")
+		InitGlobalIpAuthCache(48*time.Hour, 5*time.Minute)
 	}
 	return globalIpAuthCache
 }
@@ -167,7 +178,7 @@ func NewBaseServer(bridge *bridge.Bridge, task *file.Tunnel) *BaseServer {
 	}
 }
 
-//add the flow
+// add the flow
 func (s *BaseServer) FlowAdd(in, out int64) {
 	s.Lock()
 	defer s.Unlock()
@@ -175,7 +186,7 @@ func (s *BaseServer) FlowAdd(in, out int64) {
 	s.task.Flow.InletFlow += in
 }
 
-//change the flow
+// change the flow
 func (s *BaseServer) FlowAddHost(host *file.Host, in, out int64) {
 	s.Lock()
 	defer s.Unlock()
@@ -183,13 +194,13 @@ func (s *BaseServer) FlowAddHost(host *file.Host, in, out int64) {
 	host.Flow.InletFlow += in
 }
 
-//write fail bytes to the connection
+// write fail bytes to the connection
 func (s *BaseServer) writeConnFail(c net.Conn) {
 	c.Write([]byte(common.ConnectionFailBytes))
 	c.Write(s.errorContent)
 }
 
-//auth check
+// auth check
 func (s *BaseServer) auth(r *http.Request, c *conn.Conn, u, p string) error {
 	if u != "" && p != "" && !common.CheckAuth(r, u, p) {
 		c.Write([]byte(common.UnauthorizedBytes))
@@ -199,7 +210,7 @@ func (s *BaseServer) auth(r *http.Request, c *conn.Conn, u, p string) error {
 	return nil
 }
 
-//check flow limit of the client ,and decrease the allow num of client
+// check flow limit of the client ,and decrease the allow num of client
 func (s *BaseServer) CheckFlowAndConnNum(client *file.Client) error {
 	if client.Flow.FlowLimit > 0 && (client.Flow.FlowLimit<<20) < (client.Flow.ExportFlow+client.Flow.InletFlow) {
 		return errors.New("Traffic exceeded")
@@ -219,7 +230,7 @@ func in(target string, str_array []string) bool {
 	return false
 }
 
-//create a new connection and start bytes copying
+// create a new connection and start bytes copying
 func (s *BaseServer) DealClient(c *conn.Conn, client *file.Client, addr string,
 	rb []byte, tp string, f func(), flow *file.Flow, localProxy bool, task *file.Tunnel) error {
 

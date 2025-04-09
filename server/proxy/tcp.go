@@ -22,7 +22,7 @@ type TunnelModeServer struct {
 	listener net.Listener
 }
 
-//tcp|http|host
+// tcp|http|host
 func NewTunnelModeServer(process process, bridge NetBridge, task *file.Tunnel) *TunnelModeServer {
 	s := new(TunnelModeServer)
 	s.bridge = bridge
@@ -31,7 +31,7 @@ func NewTunnelModeServer(process process, bridge NetBridge, task *file.Tunnel) *
 	return s
 }
 
-//开始
+// 开始
 func (s *TunnelModeServer) Start() error {
 	return conn.NewTcpListenerAndProcess(s.task.ServerIp+":"+strconv.Itoa(s.task.Port), func(c net.Conn) {
 		if err := s.CheckFlowAndConnNum(s.task.Client); err != nil {
@@ -45,17 +45,17 @@ func (s *TunnelModeServer) Start() error {
 	}, &s.listener)
 }
 
-//close
+// close
 func (s *TunnelModeServer) Close() error {
 	return s.listener.Close()
 }
 
-//web管理方式
+// web管理方式
 type WebServer struct {
 	BaseServer
 }
 
-//开始
+// 开始
 func (s *WebServer) Start() error {
 	p, _ := beego.AppConfig.Int("web_port")
 	if p == 0 {
@@ -86,7 +86,7 @@ func (s *WebServer) Close() error {
 	return nil
 }
 
-//new
+// new
 func NewWebServer(bridge *bridge.Bridge) *WebServer {
 	s := new(WebServer)
 	s.bridge = bridge
@@ -95,11 +95,11 @@ func NewWebServer(bridge *bridge.Bridge) *WebServer {
 
 type process func(c *conn.Conn, s *TunnelModeServer) error
 
-//tcp proxy
+// tcp proxy
 func ProcessTunnel(c *conn.Conn, s *TunnelModeServer) error {
-	// 全局密码认证检查
-	if CheckGlobalPasswordAuth(c.RemoteAddr().String()) {
-		logs.Warn("Global password authentication required for TCP connection from %s, closing.", c.RemoteAddr().String())
+	// 全局密码认证检查 (如果隧道未设置 Bypass)
+	if !s.task.BypassGlobalPassword && CheckGlobalPasswordAuth(c.RemoteAddr().String()) {
+		logs.Warn("Global password authentication required for TCP tunnel (TaskID: %d) from %s, closing.", s.task.Id, c.RemoteAddr().String())
 		c.Close()
 		return errors.New("global password authentication required")
 	}
@@ -114,11 +114,14 @@ func ProcessTunnel(c *conn.Conn, s *TunnelModeServer) error {
 	return s.DealClient(c, s.task.Client, targetAddr, nil, common.CONN_TCP, nil, s.task.Client.Flow, s.task.Target.LocalProxy, s.task)
 }
 
-//http proxy
+// http proxy
 func ProcessHttp(c *conn.Conn, s *TunnelModeServer) error {
-	// 全局密码认证检查 (在解析 Host 之前，因为 TCP 代理模式下的 HTTP 也走这里)
-	if CheckGlobalPasswordAuth(c.RemoteAddr().String()) {
-		logs.Warn("Global password authentication required for HTTP proxy connection from %s, closing.", c.RemoteAddr().String())
+	// 全局密码认证检查 (如果隧道未设置 Bypass)
+	// 注意：HTTP 代理模式下，s.task 可能是总的 HTTP 代理任务，而不是具体的 host
+	// 因此，检查全局密码通常应该总是执行，除非整个 HTTP 代理服务被标记为 Bypass (目前模型不支持)
+	// 这里我们遵循隧道设置
+	if !s.task.BypassGlobalPassword && CheckGlobalPasswordAuth(c.RemoteAddr().String()) {
+		logs.Warn("Global password authentication required for HTTP proxy (TaskID: %d) from %s, closing.", s.task.Id, c.RemoteAddr().String())
 		c.Close()
 		return errors.New("global password authentication required")
 	}
