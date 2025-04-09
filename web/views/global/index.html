@@ -18,6 +18,15 @@
                             </div>
                         </div>
 
+                        <div class="form-group" id="global_password">
+                            <label class="control-label font-bold" langtag="word-globalpassword">全局访问密码</label>
+                            <div class="col-sm-4">
+                                <input class="form-control" type="password" name="globalPassword" placeholder=""
+                                       langtag="info-globalpassword" value="{{.globalPassword}}">
+                                <span class="help-block m-b-none" langtag="info-descglobalpassword">设置后，所有通过NPS代理的访问都需要先输入此密码进行验证（留空表示不启用）。</span>
+                            </div>
+                        </div>
+
                         <div class="form-group">
                             <div class="col-sm-4 col-sm-offset-2">
                                 <button class="btn btn-success" type="button"

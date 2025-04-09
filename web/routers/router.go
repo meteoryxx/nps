@@ -3,6 +3,7 @@ package routers
 import (
 	"ehang.io/nps/web/controllers"
 	"github.com/astaxie/beego"
+	"github.com/astaxie/beego/context"
 )
 
 func Init() {
@@ -15,6 +16,9 @@ func Init() {
 			beego.NSAutoRouter(&controllers.ClientController{}),
 			beego.NSAutoRouter(&controllers.AuthController{}),
 			beego.NSAutoRouter(&controllers.GlobalController{}),
+			beego.NSCond(func(ctx *context.Context) bool {
+				return ctx.Input.Query("token") != ""
+			}),
 		)
 		beego.AddNamespace(ns)
 	} else {
@@ -25,5 +29,7 @@ func Init() {
 		beego.AutoRouter(&controllers.AuthController{})
 		beego.AutoRouter(&controllers.GlobalController{})
 
+		// Global Authentication Route
+		beego.Router("/nps_global_auth", &controllers.AuthController{}, "*:GlobalAuth")
 	}
 }

@@ -3,6 +3,16 @@ package proxy
 import (
 	"bufio"
 	"crypto/tls"
+	"io"
+	"net"
+	"net/http"
+	"net/url"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"sync"
+
 	"ehang.io/nps/bridge"
 	"ehang.io/nps/lib/cache"
 	"ehang.io/nps/lib/common"
@@ -11,14 +21,6 @@ import (
 	"ehang.io/nps/lib/goroutine"
 	"ehang.io/nps/server/connection"
 	"github.com/astaxie/beego/logs"
-	"io"
-	"net"
-	"net/http"
-	"os"
-	"path/filepath"
-	"strconv"
-	"strings"
-	"sync"
 )
 
 type httpServer struct {
@@ -101,7 +103,6 @@ func (s *httpServer) Close() error {
 }
 
 func (s *httpServer) handleTunneling(w http.ResponseWriter, r *http.Request) {
-
 	var host *file.Host
 	var err error
 	host, err = file.GetDb().GetInfoByHost(r.Host, r)
@@ -114,6 +115,16 @@ func (s *httpServer) handleTunneling(w http.ResponseWriter, r *http.Request) {
 	if host.AutoHttps && r.TLS == nil {
 		http.Redirect(w, r, "https://"+r.Host+r.RequestURI, http.StatusMovedPermanently)
 		return
+	}
+
+	// 全局密码认证检查 (在获取 host 之后)
+	if CheckGlobalPasswordAuth(r.RemoteAddr) {
+		// 如果需要认证，并且请求的不是验证路径本身
+		if !strings.HasPrefix(r.URL.Path, "/nps_global_auth") {
+			http.Redirect(w, r, "/nps_global_auth?return_url="+url.QueryEscape(r.URL.String()), http.StatusFound)
+			return
+		}
+		// 如果是验证路径，则继续处理（下面会有专门处理验证请求的逻辑）
 	}
 
 	if r.Header.Get("Upgrade") != "" {
@@ -132,10 +143,23 @@ func (s *httpServer) handleTunneling(w http.ResponseWriter, r *http.Request) {
 
 		s.handleHttp(conn.NewConn(c), r)
 	}
-
 }
 
 func (s *httpServer) handleHttp(c *conn.Conn, r *http.Request) {
+	// 全局密码认证检查 (放在最前面)
+	if CheckGlobalPasswordAuth(c.RemoteAddr().String()) {
+		logs.Warn("Global password authentication required for HTTP connection from %s, closing.", c.RemoteAddr().String())
+		s.writeConnFail(c.Conn) // 尝试发送错误信息
+		c.Close()
+		return
+	}
+	// 判断访问地址是否在全局黑名单内 (放在全局密码之后)
+	if IsGlobalBlackIp(c.RemoteAddr().String()) {
+		logs.Warn("IP %s is in global black list, closing connection.", c.RemoteAddr().String())
+		c.Close()
+		return
+	}
+
 	var (
 		host       *file.Host
 		target     net.Conn
@@ -165,12 +189,6 @@ reset:
 	remoteAddr = strings.TrimSpace(r.Header.Get("X-Forwarded-For"))
 	if len(remoteAddr) == 0 {
 		remoteAddr = c.RemoteAddr().String()
-	}
-
-	// 判断访问地址是否在全局黑名单内
-	if IsGlobalBlackIp(c.RemoteAddr().String()) {
-		c.Close()
-		return
 	}
 
 	if host, err = file.GetDb().GetInfoByHost(r.Host, r); err != nil {

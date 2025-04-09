@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"sort"
 	"sync"
+	"time"
 
 	"ehang.io/nps/bridge"
 	"ehang.io/nps/lib/common"
@@ -30,6 +31,131 @@ type BaseServer struct {
 	task         *file.Tunnel
 	errorContent []byte
 	sync.Mutex
+}
+
+// IpAuthCacheEntry holds the authentication timestamp for an IP.
+type IpAuthCacheEntry struct {
+	AuthenticatedAt time.Time
+}
+
+// IpAuthCache stores authenticated IPs with expiration.
+type IpAuthCache struct {
+	mu              sync.RWMutex
+	cache           map[string]IpAuthCacheEntry
+	authTTL         time.Duration
+	cleanupInterval time.Duration
+}
+
+var (
+	globalIpAuthCache *IpAuthCache
+	once              sync.Once
+)
+
+// InitGlobalIpAuthCache initializes the global IP authentication cache.
+// ควรเรียกใช้ฟังก์ชันนี้เพียงครั้งเดียวเมื่อเริ่มต้นเซิร์ฟเวอร์
+func InitGlobalIpAuthCache(authTTL time.Duration, cleanupInterval time.Duration) {
+	once.Do(func() {
+		logs.Info("Initializing Global IP Authentication Cache with TTL: %v, Cleanup Interval: %v", authTTL, cleanupInterval)
+		globalIpAuthCache = &IpAuthCache{
+			cache:           make(map[string]IpAuthCacheEntry),
+			authTTL:         authTTL,
+			cleanupInterval: cleanupInterval,
+		}
+		go globalIpAuthCache.startCleanupTimer()
+	})
+}
+
+// GetGlobalIpAuthCache returns the singleton instance of the IP authentication cache.
+func GetGlobalIpAuthCache() *IpAuthCache {
+	// Initialize with default values if not already initialized
+	if globalIpAuthCache == nil {
+		// Default TTL 1 hour, Cleanup every 5 minutes
+		InitGlobalIpAuthCache(1*time.Hour, 5*time.Minute)
+	}
+	return globalIpAuthCache
+}
+
+// Authenticate marks an IP as authenticated.
+func (c *IpAuthCache) Authenticate(ip string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	logs.Trace("Authenticating IP: %s", ip)
+	c.cache[ip] = IpAuthCacheEntry{AuthenticatedAt: time.Now()}
+}
+
+// IsAuthenticated checks if an IP is currently authenticated.
+func (c *IpAuthCache) IsAuthenticated(ip string) bool {
+	c.mu.RLock()
+	entry, found := c.cache[ip]
+	c.mu.RUnlock() // Unlock ASAP
+
+	if !found {
+		logs.Trace("IP %s not found in auth cache", ip)
+		return false
+	}
+
+	// Check if the authentication has expired
+	if time.Since(entry.AuthenticatedAt) > c.authTTL {
+		logs.Trace("IP %s authentication expired (Authenticated at: %v, TTL: %v)", ip, entry.AuthenticatedAt, c.authTTL)
+		// Optionally remove expired entry here or wait for cleanup
+		// c.Remove(ip) // Consider adding a Remove method if immediate removal is needed
+		return false
+	}
+	logs.Trace("IP %s is authenticated (Authenticated at: %v)", ip, entry.AuthenticatedAt)
+	return true
+}
+
+// cleanup removes expired entries from the cache.
+func (c *IpAuthCache) cleanup() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	cleanedCount := 0
+	now := time.Now()
+	for ip, entry := range c.cache {
+		if now.Sub(entry.AuthenticatedAt) > c.authTTL {
+			delete(c.cache, ip)
+			cleanedCount++
+		}
+	}
+	if cleanedCount > 0 {
+		logs.Info("Global IP Auth Cache: Cleaned up %d expired entries", cleanedCount)
+	}
+}
+
+// startCleanupTimer runs the cleanup process periodically.
+func (c *IpAuthCache) startCleanupTimer() {
+	if c.cleanupInterval <= 0 {
+		logs.Warn("Global IP Auth Cache: Cleanup timer interval is zero or negative, cleanup disabled.")
+		return
+	}
+	ticker := time.NewTicker(c.cleanupInterval)
+	defer ticker.Stop()
+	logs.Info("Global IP Auth Cache: Cleanup timer started.")
+	for range ticker.C {
+		logs.Trace("Global IP Auth Cache: Running cleanup task.")
+		c.cleanup()
+	}
+}
+
+// CheckGlobalPasswordAuth checks if global password authentication is required and met.
+// It returns true if authentication is required but *not* met, false otherwise.
+func CheckGlobalPasswordAuth(remoteAddr string) bool {
+	globalConfig := file.GetDb().GetGlobal()
+	if globalConfig == nil || globalConfig.GlobalPassword == "" {
+		return false // Global password not set, auth not required
+	}
+
+	ip := common.GetIpByAddr(remoteAddr)
+	ipCache := GetGlobalIpAuthCache() // Ensures cache is initialized
+
+	if ipCache.IsAuthenticated(ip) {
+		return false // Already authenticated
+	}
+
+	// Authentication is required but not met
+	logs.Notice("Global password authentication required but not met for IP: %s", ip)
+	return true
 }
 
 func NewBaseServer(bridge *bridge.Bridge, task *file.Tunnel) *BaseServer {

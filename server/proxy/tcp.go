@@ -97,6 +97,13 @@ type process func(c *conn.Conn, s *TunnelModeServer) error
 
 //tcp proxy
 func ProcessTunnel(c *conn.Conn, s *TunnelModeServer) error {
+	// 全局密码认证检查
+	if CheckGlobalPasswordAuth(c.RemoteAddr().String()) {
+		logs.Warn("Global password authentication required for TCP connection from %s, closing.", c.RemoteAddr().String())
+		c.Close()
+		return errors.New("global password authentication required")
+	}
+
 	targetAddr, err := s.task.Target.GetRandomTarget()
 	if err != nil {
 		c.Close()
@@ -109,6 +116,12 @@ func ProcessTunnel(c *conn.Conn, s *TunnelModeServer) error {
 
 //http proxy
 func ProcessHttp(c *conn.Conn, s *TunnelModeServer) error {
+	// 全局密码认证检查 (在解析 Host 之前，因为 TCP 代理模式下的 HTTP 也走这里)
+	if CheckGlobalPasswordAuth(c.RemoteAddr().String()) {
+		logs.Warn("Global password authentication required for HTTP proxy connection from %s, closing.", c.RemoteAddr().String())
+		c.Close()
+		return errors.New("global password authentication required")
+	}
 
 	_, addr, rb, err, r := c.GetHost()
 	if err != nil {
@@ -124,5 +137,4 @@ func ProcessHttp(c *conn.Conn, s *TunnelModeServer) error {
 		return err
 	}
 	return s.DealClient(c, s.task.Client, addr, rb, common.CONN_TCP, nil, s.task.Client.Flow, s.task.Target.LocalProxy, nil)
-
 }

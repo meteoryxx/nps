@@ -23,6 +23,7 @@ func (s *GlobalController) Index() {
 		return
 	}
 	s.Data["globalBlackIpList"] = strings.Join(global.BlackIpList, "\r\n")
+	s.Data["globalPassword"] = global.GlobalPassword
 }
 
 //添加全局黑名单IP
@@ -37,7 +38,10 @@ func (s *GlobalController) Save() {
 		s.display()
 	} else {
 
-		t := &file.Glob{BlackIpList: RemoveRepeatedElement(strings.Split(s.getEscapeString("globalBlackIpList"), "\r\n"))}
+		t := &file.Glob{
+			BlackIpList:    RemoveRepeatedElement(strings.Split(s.getEscapeString("globalBlackIpList"), "\r\n")),
+			GlobalPassword: s.GetString("globalPassword"),
+		}
 
 		if err := file.GetDb().SaveGlobal(t); err != nil {
 			s.AjaxErr(err.Error())
