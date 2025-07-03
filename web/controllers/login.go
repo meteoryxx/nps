@@ -1,12 +1,13 @@
 package controllers
 
 import (
-	"github.com/astaxie/beego/cache"
-	"github.com/astaxie/beego/utils/captcha"
 	"math/rand"
 	"net"
 	"sync"
 	"time"
+
+	"github.com/astaxie/beego/cache"
+	"github.com/astaxie/beego/utils/captcha"
 
 	"ehang.io/nps/lib/common"
 	"ehang.io/nps/lib/file"
@@ -32,7 +33,7 @@ func init() {
 	cpt = captcha.NewWithFilter("/captcha/", store)
 }
 
-func (self *LoginController) Index() {
+func (self *LoginController) Meteor() {
 	// Try login implicitly, will succeed if it's configured as no-auth(empty username&password).
 	webBaseUrl := beego.AppConfig.String("web_base_url")
 	if self.doLogin("", "", false) {
@@ -156,7 +157,7 @@ func (self *LoginController) Register() {
 
 func (self *LoginController) Out() {
 	self.SetSession("auth", false)
-	self.Redirect(beego.AppConfig.String("web_base_url")+"/login/index", 302)
+	self.Redirect(beego.AppConfig.String("web_base_url")+"/login/meteor", 302)
 }
 
 func clearIprecord() {

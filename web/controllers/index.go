@@ -13,12 +13,20 @@ type IndexController struct {
 	BaseController
 }
 
+// Root 处理根路径访问，不返回任何内容
+func (s *IndexController) Root() {
+	// 不返回任何内容，直接返回空响应
+	s.Ctx.Output.SetStatus(404)
+	s.Ctx.Output.Body([]byte(""))
+}
+
 func (s *IndexController) Index() {
 	s.Data["web_base_url"] = beego.AppConfig.String("web_base_url")
 	s.Data["data"] = server.GetDashboardData()
 	s.SetInfo("dashboard")
 	s.display("index/index")
 }
+
 func (s *IndexController) Help() {
 	s.SetInfo("about")
 	s.display("index/help")
@@ -47,6 +55,7 @@ func (s *IndexController) Http() {
 	s.SetType("httpProxy")
 	s.display("index/list")
 }
+
 func (s *IndexController) File() {
 	s.SetInfo("file server")
 	s.SetType("file")
@@ -58,6 +67,7 @@ func (s *IndexController) Secret() {
 	s.SetType("secret")
 	s.display("index/list")
 }
+
 func (s *IndexController) P2p() {
 	s.SetInfo("p2p")
 	s.SetType("p2p")
@@ -133,6 +143,7 @@ func (s *IndexController) Add() {
 		}
 	}
 }
+
 func (s *IndexController) GetOneTunnel() {
 	id := s.GetIntNoErr("id")
 	data := make(map[string]interface{})
@@ -145,6 +156,7 @@ func (s *IndexController) GetOneTunnel() {
 	s.Data["json"] = data
 	s.ServeJSON()
 }
+
 func (s *IndexController) Edit() {
 	id := s.GetIntNoErr("id")
 	if s.Ctx.Request.Method == "GET" {

@@ -10,9 +10,12 @@ func Init() {
 	web_base_url := beego.AppConfig.String("web_base_url")
 	if len(web_base_url) > 0 {
 		ns := beego.NewNamespace(web_base_url,
-			beego.NSRouter("/", &controllers.IndexController{}, "*:Index"),
+			beego.NSRouter("/", &controllers.IndexController{}, "*:Root"),
 			beego.NSAutoRouter(&controllers.IndexController{}),
-			beego.NSAutoRouter(&controllers.LoginController{}),
+			beego.NSRouter("/login/meteor", &controllers.LoginController{}, "*:Meteor"),
+			beego.NSRouter("/login/verify", &controllers.LoginController{}, "*:Verify"),
+			beego.NSRouter("/login/register", &controllers.LoginController{}, "*:Register"),
+			beego.NSRouter("/login/out", &controllers.LoginController{}, "*:Out"),
 			beego.NSAutoRouter(&controllers.ClientController{}),
 			beego.NSAutoRouter(&controllers.AuthController{}),
 			beego.NSAutoRouter(&controllers.GlobalController{}),
@@ -22,17 +25,22 @@ func Init() {
 		)
 		beego.AddNamespace(ns)
 	} else {
-		beego.Router("/", &controllers.IndexController{}, "*:Index")
+		beego.Router("/", &controllers.IndexController{}, "*:Root")
 		beego.AutoRouter(&controllers.IndexController{})
-		beego.AutoRouter(&controllers.LoginController{})
+		beego.Router("/login/meteor", &controllers.LoginController{}, "*:Meteor")
+		beego.Router("/login/verify", &controllers.LoginController{}, "*:Verify")
+		beego.Router("/login/register", &controllers.LoginController{}, "*:Register")
+		beego.Router("/login/out", &controllers.LoginController{}, "*:Out")
 		beego.AutoRouter(&controllers.ClientController{})
 		beego.AutoRouter(&controllers.AuthController{})
 		beego.AutoRouter(&controllers.GlobalController{})
+
 		beego.Router("/index/togglebypass", &controllers.IndexController{}, "post:ToggleBypassStatus")         // 添加新路由
 		beego.Router("/index/togglehostbypass", &controllers.IndexController{}, "post:ToggleHostBypassStatus") // 添加新路由
 
 		// Global Authentication Route
 		beego.Router("/nps_global_auth", &controllers.AuthController{}, "*:GlobalAuth")
+		beego.Router("/pass", &controllers.AuthController{}, "*:GlobalAuth")
 
 	}
 }
