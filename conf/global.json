@@ -1,1 +1,1 @@
-{"black_ip_list":[""],"global_password":"123456"}
+{"black_ip_list":["10.0.0.50","192.168.1.100"],"white_ip_list":["","192.168.31.150"],"global_password":"123456789"}
