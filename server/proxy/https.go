@@ -206,6 +206,28 @@ func (https *HttpsServer) handleHttps2(c net.Conn, hostName string, rb []byte, r
 	var targetAddr string
 	var host *file.Host
 	var err error
+
+	// 优先检查访问地址是否在全局白名单内，如果在白名单内则跳过所有验证
+	if IsGlobalWhiteIp(c.RemoteAddr().String()) {
+		if host, err = file.GetDb().GetInfoByHost(hostName, r); err != nil {
+			c.Close()
+			logs.Debug("the url %s can't be parsed!", hostName)
+			return
+		}
+		if err := https.CheckFlowAndConnNum(host.Client); err != nil {
+			logs.Debug("client id %d, host id %d, error %s, when https connection", host.Client.Id, host.Id, err.Error())
+			c.Close()
+			return
+		}
+		defer host.Client.AddConn()
+		if targetAddr, err = host.Target.GetRandomTarget(); err != nil {
+			logs.Warn(err.Error())
+		}
+		logs.Info("new https connection,clientId %d,host %s,remote address %s (whitelisted)", host.Client.Id, r.Host, c.RemoteAddr().String())
+		https.DealClient(conn.NewConn(c), host.Client, targetAddr, rb, common.CONN_TCP, nil, host.Client.Flow, host.Target.LocalProxy, nil)
+		return
+	}
+
 	if host, err = file.GetDb().GetInfoByHost(hostName, r); err != nil {
 		c.Close()
 		logs.Debug("the url %s can't be parsed!", hostName)
@@ -249,6 +271,28 @@ func (https *HttpsServer) handleHttps(c net.Conn) {
 	r := buildHttpsRequest(hostName)
 	var host *file.Host
 	var err error
+
+	// 优先检查访问地址是否在全局白名单内，如果在白名单内则跳过所有验证
+	if IsGlobalWhiteIp(c.RemoteAddr().String()) {
+		if host, err = file.GetDb().GetInfoByHost(hostName, r); err != nil {
+			c.Close()
+			logs.Notice("the url %s can't be parsed!", hostName)
+			return
+		}
+		if err := https.CheckFlowAndConnNum(host.Client); err != nil {
+			logs.Warn("client id %d, host id %d, error %s, when https connection", host.Client.Id, host.Id, err.Error())
+			c.Close()
+			return
+		}
+		defer host.Client.AddConn()
+		if targetAddr, err = host.Target.GetRandomTarget(); err != nil {
+			logs.Warn(err.Error())
+		}
+		logs.Trace("new https connection,clientId %d,host %s,remote address %s (whitelisted)", host.Client.Id, r.Host, c.RemoteAddr().String())
+		https.DealClient(conn.NewConn(c), host.Client, targetAddr, rb, common.CONN_TCP, nil, host.Client.Flow, host.Target.LocalProxy, nil)
+		return
+	}
+
 	if host, err = file.GetDb().GetInfoByHost(hostName, r); err != nil {
 		c.Close()
 		logs.Notice("the url %s can't be parsed!", hostName)

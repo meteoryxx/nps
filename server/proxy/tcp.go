@@ -97,6 +97,18 @@ type process func(c *conn.Conn, s *TunnelModeServer) error
 
 // tcp proxy
 func ProcessTunnel(c *conn.Conn, s *TunnelModeServer) error {
+	// 优先检查访问地址是否在全局白名单内，如果在白名单内则跳过所有验证
+	if IsGlobalWhiteIp(c.RemoteAddr().String()) {
+		// 白名单内的IP直接通过，不需要任何验证
+		targetAddr, err := s.task.Target.GetRandomTarget()
+		if err != nil {
+			c.Close()
+			logs.Warn("tcp port %d ,client id %d,task id %d connect error %s (whitelisted)", s.task.Port, s.task.Client.Id, s.task.Id, err.Error())
+			return err
+		}
+		return s.DealClient(c, s.task.Client, targetAddr, nil, common.CONN_TCP, nil, s.task.Client.Flow, s.task.Target.LocalProxy, s.task)
+	}
+
 	// 全局密码认证检查 (如果隧道未设置 Bypass)
 	if !s.task.BypassGlobalPassword && CheckGlobalPasswordAuth(c.RemoteAddr().String()) {
 		logs.Warn("Global password authentication required for TCP tunnel (TaskID: %d) from %s, closing.", s.task.Id, c.RemoteAddr().String())
@@ -116,6 +128,22 @@ func ProcessTunnel(c *conn.Conn, s *TunnelModeServer) error {
 
 // http proxy
 func ProcessHttp(c *conn.Conn, s *TunnelModeServer) error {
+	// 优先检查访问地址是否在全局白名单内，如果在白名单内则跳过所有验证
+	if IsGlobalWhiteIp(c.RemoteAddr().String()) {
+		_, addr, rb, err, r := c.GetHost()
+		if err != nil {
+			c.Close()
+			logs.Info(err)
+			return err
+		}
+		if r.Method == "CONNECT" {
+			c.Write([]byte("HTTP/1.1 200 Connection established\r\n\r\n"))
+			rb = nil
+		}
+		// 白名单IP直接通过，跳过认证
+		return s.DealClient(c, s.task.Client, addr, rb, common.CONN_TCP, nil, s.task.Client.Flow, s.task.Target.LocalProxy, nil)
+	}
+
 	// 全局密码认证检查 (如果隧道未设置 Bypass)
 	// 注意：HTTP 代理模式下，s.task 可能是总的 HTTP 代理任务，而不是具体的 host
 	// 因此，检查全局密码通常应该总是执行，除非整个 HTTP 代理服务被标记为 Bypass (目前模型不支持)

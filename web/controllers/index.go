@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	"ehang.io/nps/lib/common"
 	"ehang.io/nps/lib/file"
 	"ehang.io/nps/server"
 	"ehang.io/nps/server/tool"
@@ -11,6 +12,26 @@ import (
 
 type IndexController struct {
 	BaseController
+}
+
+// getClientOrCreateLocalhost 获取客户端或创建本机客户端
+func (s *IndexController) getClientOrCreateLocalhost(clientId int) (*file.Client, error) {
+	if clientId == common.LOCALHOST_CLIENT_ID {
+		// 创建虚拟的本机客户端
+		localClient := &file.Client{
+			Id:        common.LOCALHOST_CLIENT_ID,
+			Remark:    "本机 (NPS服务器)",
+			VerifyKey: "localhost",
+			Status:    true,
+			IsConnect: true,
+			NoStore:   true, // 不存储到文件
+			NoDisplay: true, // 不在客户端列表中显示
+			Flow:      &file.Flow{},
+			Cnf:       &file.Config{},
+		}
+		return localClient, nil
+	}
+	return file.GetDb().GetClient(clientId)
 }
 
 // Root 处理根路径访问，不返回任何内容
@@ -103,12 +124,20 @@ func (s *IndexController) Add() {
 		s.SetInfo("add tunnel")
 		s.display()
 	} else {
+		clientId := s.GetIntNoErr("client_id")
 		id := int(file.GetDb().JsonDb.GetTaskId())
+
+		// 判断是否为本机客户端，如果是则自动设置LocalProxy为true
+		localProxy := s.GetBoolNoErr("local_proxy")
+		if clientId == common.LOCALHOST_CLIENT_ID {
+			localProxy = true
+		}
+
 		t := &file.Tunnel{
 			Port:                 s.GetIntNoErr("port"),
 			ServerIp:             s.getEscapeString("server_ip"),
 			Mode:                 s.getEscapeString("type"),
-			Target:               &file.Target{TargetStr: s.getEscapeString("target"), LocalProxy: s.GetBoolNoErr("local_proxy")},
+			Target:               &file.Target{TargetStr: s.getEscapeString("target"), LocalProxy: localProxy},
 			Id:                   id,
 			Status:               true,
 			Remark:               s.getEscapeString("remark"),
@@ -127,7 +156,7 @@ func (s *IndexController) Add() {
 			s.AjaxErr("The port cannot be opened because it may has been occupied or is no longer allowed.")
 		}
 		var err error
-		if t.Client, err = file.GetDb().GetClient(s.GetIntNoErr("client_id")); err != nil {
+		if t.Client, err = s.getClientOrCreateLocalhost(clientId); err != nil {
 			s.AjaxErr(err.Error())
 		}
 		if t.Client.MaxTunnelNum != 0 && t.Client.GetTunnelNum() >= t.Client.MaxTunnelNum {
@@ -171,7 +200,8 @@ func (s *IndexController) Edit() {
 		if t, err := file.GetDb().GetTask(id); err != nil {
 			s.error()
 		} else {
-			if client, err := file.GetDb().GetClient(s.GetIntNoErr("client_id")); err != nil {
+			clientId := s.GetIntNoErr("client_id")
+			if client, err := s.getClientOrCreateLocalhost(clientId); err != nil {
 				s.AjaxErr("modified error,the client is not exist")
 				return
 			} else {
@@ -197,7 +227,13 @@ func (s *IndexController) Edit() {
 			t.LocalPath = s.getEscapeString("local_path")
 			t.StripPre = s.getEscapeString("strip_pre")
 			t.Remark = s.getEscapeString("remark")
-			t.Target.LocalProxy = s.GetBoolNoErr("local_proxy")
+
+			// 判断是否为本机客户端，如果是则自动设置LocalProxy为true
+			localProxy := s.GetBoolNoErr("local_proxy")
+			if clientId == common.LOCALHOST_CLIENT_ID {
+				localProxy = true
+			}
+			t.Target.LocalProxy = localProxy
 			t.BypassGlobalPassword = s.GetBoolNoErr("bypass_global_password")
 			file.GetDb().UpdateTask(t)
 			server.StopServer(t.Id)

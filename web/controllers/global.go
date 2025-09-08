@@ -1,8 +1,9 @@
 package controllers
 
 import (
-	"ehang.io/nps/lib/file"
 	"strings"
+
+	"ehang.io/nps/lib/file"
 )
 
 type GlobalController struct {
@@ -23,10 +24,11 @@ func (s *GlobalController) Index() {
 		return
 	}
 	s.Data["globalBlackIpList"] = strings.Join(global.BlackIpList, "\r\n")
+	s.Data["globalWhiteIpList"] = strings.Join(global.WhiteIpList, "\r\n")
 	s.Data["globalPassword"] = global.GlobalPassword
 }
 
-//添加全局黑名单IP
+// 添加全局黑名单IP
 func (s *GlobalController) Save() {
 	//global, err := file.GetDb().GetGlobal()
 	//if err != nil {
@@ -40,6 +42,7 @@ func (s *GlobalController) Save() {
 
 		t := &file.Glob{
 			BlackIpList:    RemoveRepeatedElement(strings.Split(s.getEscapeString("globalBlackIpList"), "\r\n")),
+			WhiteIpList:    RemoveRepeatedElement(strings.Split(s.getEscapeString("globalWhiteIpList"), "\r\n")),
 			GlobalPassword: s.GetString("globalPassword"),
 		}
 

@@ -11,16 +11,41 @@ import (
 	"ehang.io/nps/lib/common"
 	"ehang.io/nps/lib/crypt"
 	"ehang.io/nps/lib/rate"
+	"github.com/astaxie/beego/logs"
 )
 
 type DbUtils struct {
 	JsonDb *JsonDb
 }
 
+// 全局配置更新通知回调函数类型
+type GlobalConfigUpdateCallback func()
+
 var (
 	Db   *DbUtils
 	once sync.Once
+	// 全局配置更新回调函数列表
+	globalConfigCallbacks []GlobalConfigUpdateCallback
+	callbackMutex         sync.RWMutex
 )
+
+// RegisterGlobalConfigCallback 注册全局配置更新回调函数
+func RegisterGlobalConfigCallback(callback GlobalConfigUpdateCallback) {
+	callbackMutex.Lock()
+	defer callbackMutex.Unlock()
+	globalConfigCallbacks = append(globalConfigCallbacks, callback)
+}
+
+// notifyGlobalConfigUpdate 通知所有注册的回调函数
+func notifyGlobalConfigUpdate() {
+	callbackMutex.RLock()
+	defer callbackMutex.RUnlock()
+	for _, callback := range globalConfigCallbacks {
+		if callback != nil {
+			callback()
+		}
+	}
+}
 
 // init csv from file
 func GetDb() *DbUtils {
@@ -119,6 +144,13 @@ func (s *DbUtils) UpdateTask(t *Tunnel) error {
 func (s *DbUtils) SaveGlobal(t *Glob) error {
 	s.JsonDb.Global = t
 	s.JsonDb.StoreGlobalToJsonFile()
+
+	// 添加日志记录配置更新
+	logs.Info("全局配置已更新 - 黑名单: %v, 白名单: %v", t.BlackIpList, t.WhiteIpList)
+
+	// 通知所有注册的回调函数，配置已更新
+	notifyGlobalConfigUpdate()
+
 	return nil
 }
 

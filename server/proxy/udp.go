@@ -27,7 +27,7 @@ func NewUdpModeServer(bridge *bridge.Bridge, task *file.Tunnel) *UdpModeServer {
 	return s
 }
 
-//开始
+// 开始
 func (s *UdpModeServer) Start() error {
 	var err error
 	if s.task.ServerIp == "" {
@@ -44,6 +44,14 @@ func (s *UdpModeServer) Start() error {
 			if strings.Contains(err.Error(), "use of closed network connection") {
 				break
 			}
+			continue
+		}
+
+		// 优先检查访问地址是否在全局白名单内，如果在白名单内则跳过所有验证
+		if IsGlobalWhiteIp(addr.String()) {
+			// 白名单内的IP直接通过，不需要任何验证
+			logs.Trace("New udp connection,client %d,remote address %s (whitelisted)", s.task.Client.Id, addr)
+			go s.process(addr, buf[:n])
 			continue
 		}
 

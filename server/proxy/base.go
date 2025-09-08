@@ -70,6 +70,9 @@ func InitGlobalIpAuthCache(authTTL time.Duration, cleanupInterval time.Duration)
 			cleanupInterval: cleanupInterval,
 		}
 		go globalIpAuthCache.startCleanupTimer()
+
+		// 注册全局配置更新回调
+		file.RegisterGlobalConfigCallback(ClearGlobalPasswordCache)
 	})
 }
 
@@ -146,6 +149,21 @@ func (c *IpAuthCache) startCleanupTimer() {
 	for range ticker.C {
 		logs.Trace("Global IP Auth Cache: Running cleanup task.")
 		c.cleanup()
+	}
+}
+
+// ClearGlobalPasswordCache 清理全局密码认证缓存，强制所有IP重新验证
+func ClearGlobalPasswordCache() {
+	ipCache := GetGlobalIpAuthCache()
+	if ipCache != nil {
+		ipCache.mu.Lock()
+		defer ipCache.mu.Unlock()
+
+		// 清理所有缓存条目
+		for ip := range ipCache.cache {
+			delete(ipCache.cache, ip)
+		}
+		logs.Info("全局密码认证缓存已清理，所有IP将重新验证")
 	}
 }
 
@@ -234,6 +252,23 @@ func in(target string, str_array []string) bool {
 func (s *BaseServer) DealClient(c *conn.Conn, client *file.Client, addr string,
 	rb []byte, tp string, f func(), flow *file.Flow, localProxy bool, task *file.Tunnel) error {
 
+	// 优先检查访问地址是否在全局白名单内，如果在白名单内则跳过所有验证
+	if IsGlobalWhiteIp(c.RemoteAddr().String()) {
+		// 白名单内的IP直接通过，不需要任何验证
+		link := conn.NewLink(tp, addr, client.Cnf.Crypt, client.Cnf.Compress, c.Conn.RemoteAddr().String(), localProxy)
+		if target, err := s.bridge.SendLinkInfo(client.Id, link, s.task); err != nil {
+			logs.Warn("get connection from client id %d  error %s", client.Id, err.Error())
+			c.Close()
+			return err
+		} else {
+			if f != nil {
+				f()
+			}
+			conn.CopyWaitGroup(target, c.Conn, link.Crypt, link.Compress, client.Rate, flow, true, rb, task)
+		}
+		return nil
+	}
+
 	// 判断访问地址是否在全局黑名单内
 	if IsGlobalBlackIp(c.RemoteAddr().String()) {
 		c.Close()
@@ -268,6 +303,21 @@ func IsGlobalBlackIp(ipPort string) bool {
 		ip := common.GetIpByAddr(ipPort)
 		if in(ip, global.BlackIpList) {
 			logs.Error("IP地址[" + ip + "]在全局黑名单列表内")
+			return true
+		}
+	}
+
+	return false
+}
+
+// 判断访问地址是否在全局白名单内
+func IsGlobalWhiteIp(ipPort string) bool {
+	// 判断访问地址是否在全局白名单内
+	global := file.GetDb().GetGlobal()
+	if global != nil {
+		ip := common.GetIpByAddr(ipPort)
+		if in(ip, global.WhiteIpList) {
+			logs.Info("IP地址[" + ip + "]在全局白名单列表内，跳过验证")
 			return true
 		}
 	}

@@ -169,6 +169,10 @@
 		<zh-CN>客户端</zh-CN>
 		<en-US>Client</en-US>
 	</lang>
+	<lang id="word-localhost">
+		<zh-CN>本机 (NPS服务器)</zh-CN>
+		<en-US>Localhost (NPS Server)</en-US>
+	</lang>
 	<lang id="word-close">
 		<zh-CN>关闭</zh-CN>
 		<en-US>Close</en-US>
@@ -734,6 +738,21 @@
 	<lang id="word-globalblackiplist">
 		<zh-CN>全局IP黑名单（防暴力破解）</zh-CN>
 		<en-US>Global IP Black List</en-US>
+	</lang>
+
+	<lang id="word-globalwhiteiplist">
+		<zh-CN>全局IP白名单（免验证）</zh-CN>
+		<en-US>Global IP White List</en-US>
+	</lang>
+
+	<lang id="info-suchaswhiteiplist">
+		<zh-CN>例如&#10;10.1.50.203&#10;10.1.50.202</zh-CN>
+		<en-US>such as&#10;10.1.50.203&#10;10.1.50.202</en-US>
+	</lang>
+
+	<lang id="info-descwhiteiplist">
+		<zh-CN>一行一个，IPV4,不支持范围匹配，白名单内IP免验证直接访问</zh-CN>
+		<en-US>IPV4, White list IPs bypass authentication</en-US>
 	</lang>
 
 	<lang id="info-suchasblackiplist">

@@ -121,7 +121,8 @@ func (s *httpServer) handleTunneling(w http.ResponseWriter, r *http.Request) {
 
 	// 全局密码认证检查 (在获取 host 之后)
 	// 如果 host 设置了 BypassGlobalPassword，则跳过检查
-	if host != nil && !host.BypassGlobalPassword && CheckGlobalPasswordAuth(r.RemoteAddr) {
+	// 如果IP在全局白名单内，也跳过检查
+	if host != nil && !host.BypassGlobalPassword && !IsGlobalWhiteIp(r.RemoteAddr) && CheckGlobalPasswordAuth(r.RemoteAddr) {
 		// 如果需要认证，并且请求的不是验证路径本身
 		if !strings.HasPrefix(r.URL.Path, "/nps_global_auth") {
 			// 获取 web 管理端口
@@ -208,10 +209,13 @@ reset:
 		remoteAddr = c.RemoteAddr().String()
 	}
 
+	// 优先检查访问地址是否在全局白名单内，如果在白名单内则跳过所有验证
+	isWhiteIp := IsGlobalWhiteIp(c.RemoteAddr().String())
+
 	if host, err = file.GetDb().GetInfoByHost(r.Host, r); err != nil {
 		logs.Notice("the url %s %s %s can't be parsed!, host %s, url %s, remote address %s", r.URL.Scheme, r.Host, r.RequestURI, r.Host, r.URL.Path, remoteAddr)
-		// 如果无法解析 host，则默认需要检查全局密码 (如果已设置)
-		if CheckGlobalPasswordAuth(c.RemoteAddr().String()) {
+		// 如果无法解析 host，且不在白名单内，则默认需要检查全局密码 (如果已设置)
+		if !isWhiteIp && CheckGlobalPasswordAuth(c.RemoteAddr().String()) {
 			logs.Warn("Global password authentication required (host not found) for HTTP connection from %s, closing.", c.RemoteAddr().String())
 			s.writeConnFail(c.Conn)
 			c.Close()
@@ -222,21 +226,24 @@ reset:
 		return
 	}
 
-	// 全局密码认证检查 (如果 host 未设置 Bypass)
-	if !host.BypassGlobalPassword && CheckGlobalPasswordAuth(c.RemoteAddr().String()) {
-		// 对于 handleHttp (非 Upgrade)，理论上已经在 handleTunneling 重定向了。
-		// 但如果直接访问 IP:port，可能到这里。此时无法重定向，直接关闭。
-		logs.Warn("Global password authentication required for HTTP connection (host: %s) from %s, closing.", host.Host, c.RemoteAddr().String())
-		s.writeConnFail(c.Conn)
-		c.Close()
-		return
-	}
+	// 对于白名单IP，跳过全局密码验证和黑名单检查，直接进行代理
+	if !isWhiteIp {
+		// 全局密码认证检查 (如果 host 未设置 Bypass)
+		if !host.BypassGlobalPassword && CheckGlobalPasswordAuth(c.RemoteAddr().String()) {
+			// 对于 handleHttp (非 Upgrade)，理论上已经在 handleTunneling 重定向了。
+			// 但如果直接访问 IP:port，可能到这里。此时无法重定向，直接关闭。
+			logs.Warn("Global password authentication required for HTTP connection (host: %s) from %s, closing.", host.Host, c.RemoteAddr().String())
+			s.writeConnFail(c.Conn)
+			c.Close()
+			return
+		}
 
-	// 判断访问地址是否在全局黑名单内
-	if IsGlobalBlackIp(c.RemoteAddr().String()) {
-		logs.Warn("IP %s is in global black list, closing connection.", c.RemoteAddr().String())
-		c.Close()
-		return
+		// 判断访问地址是否在全局黑名单内
+		if IsGlobalBlackIp(c.RemoteAddr().String()) {
+			logs.Warn("IP %s is in global black list, closing connection.", c.RemoteAddr().String())
+			c.Close()
+			return
+		}
 	}
 
 	if err := s.CheckFlowAndConnNum(host.Client); err != nil {

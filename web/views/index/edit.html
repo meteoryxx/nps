@@ -33,7 +33,7 @@
                     <div class="form-group" id="client_id">
                         <label class="col-sm-2 control-label font-bold" langtag="word-clientid"></label>
                         <div class="col-sm-10">
-                            <input value="{{.t.Client.Id}}" value="{{.client_id}}" class="form-control" type="text" name="client_id" placeholder="" langtag="word-clientid">
+                            <select class="form-control" name="client_id" placeholder="" langtag="word-belongclient"></select>
                         </div>
                     </div>
 
@@ -150,5 +150,32 @@
         $("#use_client").on("change", function () {
             resetForm()
         })
+        
+        getClientList() // 加载客户端列表
     })
+
+    function getClientList() {
+        $("select[name='client_id']").empty();
+        // 首先添加本机选项
+        var localhostOption = '<option value="-1" langtag="word-localhost">本机 (NPS服务器)</option>';
+        $("select[name='client_id']").append(localhostOption);
+        
+        $.ajax({
+            type: "POST",
+            url: "{{.web_base_url}}/client/list", // 服务器数据的加载地址
+            data: {order:"asc",offset:0,limit:999},
+            dataType : "json",
+            success : function(data) {
+                if (data && data.rows.length > 0) {
+                    for(var i=0; i<data.rows.length; i++){
+                        var option="<option value=\""+data.rows[i].Id+"\"";
+                        option += ">"+data.rows[i].Id + '-' +data.rows[i].Remark+"</option>"; //动态添加数据
+                        $("select[name='client_id']").append(option);
+                    }
+                }
+                // 设置当前选中的客户端
+                $("select[name='client_id']").val('{{.t.Client.Id}}');
+            }
+        });
+    }
 </script>

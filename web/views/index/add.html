@@ -166,6 +166,10 @@
 
     function getClientList() {
         $("select[name='client_id']").empty();
+        // 首先添加本机选项
+        var localhostOption = '<option value="-1" langtag="word-localhost">本机 (NPS服务器)</option>';
+        $('select[name="client_id"]').append(localhostOption);
+        
         $.ajax({
             type: "POST",
             url: "{{.web_base_url}}/client/list", // 服务器数据的加载地址
