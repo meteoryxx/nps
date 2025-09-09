@@ -15,6 +15,7 @@ import (
 	"ehang.io/nps/bridge"
 	"ehang.io/nps/lib/common"
 	"ehang.io/nps/lib/file"
+	"ehang.io/nps/lib/rate"
 	"ehang.io/nps/server/proxy"
 	"ehang.io/nps/server/tool"
 	"github.com/astaxie/beego"
@@ -337,9 +338,134 @@ func GetTunnel(start, length int, typeVal string, clientId int, search string, s
 
 // get client list
 func GetClientList(start, length int, search, sort, order string, clientId int) (list []*file.Client, cnt int) {
-	list, cnt = file.GetDb().GetClientList(start, length, search, sort, order, clientId)
+	// 先创建本机客户端
+	localClient := createLocalhostClient()
+
+	// 检查搜索条件是否匹配本机客户端
+	includeLocalhost := shouldIncludeLocalhost(localClient, search, clientId)
+
+	// 获取数据库中的客户端列表
+	var dbList []*file.Client
+	var dbCnt int
+
+	if includeLocalhost {
+		// 如果包含本机客户端，需要调整分页参数
+		if start > 0 {
+			// 本机客户端占第一位，所以数据库查询的start需要减1
+			dbList, dbCnt = file.GetDb().GetClientList(start-1, length, search, sort, order, clientId)
+		} else {
+			// start为0，本机客户端会占用一个位置，所以数据库查询的length需要减1
+			if length > 0 {
+				dbList, dbCnt = file.GetDb().GetClientList(start, length-1, search, sort, order, clientId)
+			} else {
+				dbList, dbCnt = file.GetDb().GetClientList(start, length, search, sort, order, clientId)
+			}
+		}
+		cnt = dbCnt + 1 // 总数要加上本机客户端
+
+		// 构建返回列表
+		if start == 0 {
+			// 本机客户端应该在第一位
+			list = append([]*file.Client{localClient}, dbList...)
+		} else {
+			// 本机客户端不在当前页
+			list = dbList
+		}
+	} else {
+		// 不包含本机客户端，直接查询数据库
+		list, cnt = file.GetDb().GetClientList(start, length, search, sort, order, clientId)
+	}
+
 	dealClientData()
 	return
+}
+
+// 创建本机客户端
+func createLocalhostClient() *file.Client {
+	localClient := &file.Client{
+		Id:             common.LOCALHOST_CLIENT_ID,
+		Remark:         "本机 (NPS服务器)",
+		VerifyKey:      "localhost",
+		Status:         true,
+		IsConnect:      true,
+		NoStore:        true,
+		NoDisplay:      false,
+		Flow:           &file.Flow{},
+		Cnf:            &file.Config{},
+		Version:        "localhost",
+		CreateTime:     "本机服务器",
+		LastOnlineTime: time.Now().Format("2006-01-02 15:04:05"),
+		Addr:           "127.0.0.1",
+		WebUserName:    "",
+		WebPassword:    "",
+		MaxConn:        0,
+		NowConn:        0,
+		RateLimit:      0,
+		BlackIpList:    []string{},
+	}
+
+	// 初始化Rate字段以避免前端报错
+	localClient.Rate = &rate.Rate{
+		NowRate: 0,
+	}
+
+	// 统计本机客户端的隧道和流量
+	calculateLocalhostStats(localClient)
+
+	return localClient
+}
+
+// 检查是否应该包含本机客户端
+func shouldIncludeLocalhost(localClient *file.Client, search string, clientId int) bool {
+	// 如果指定了特定客户端ID且不是本机，则不包含
+	if clientId != 0 && clientId != common.LOCALHOST_CLIENT_ID {
+		return false
+	}
+
+	// 如果有搜索条件，检查是否匹配
+	if search != "" {
+		searchInt := common.GetIntNoErrByStr(search)
+		if !(localClient.Id == searchInt ||
+			strings.Contains(localClient.VerifyKey, search) ||
+			strings.Contains(localClient.Remark, search)) {
+			return false
+		}
+	}
+
+	return true
+}
+
+// 计算本机客户端的统计信息
+func calculateLocalhostStats(localClient *file.Client) {
+	var tunnelCount int
+	var hostCount int
+	var inletFlow, exportFlow int64
+
+	// 统计本机客户端的隧道数量和流量
+	file.GetDb().JsonDb.Tasks.Range(func(key, value interface{}) bool {
+		v := value.(*file.Tunnel)
+		if v.Client.Id == common.LOCALHOST_CLIENT_ID {
+			tunnelCount++
+			inletFlow += v.Flow.InletFlow
+			exportFlow += v.Flow.ExportFlow
+		}
+		return true
+	})
+
+	// 统计本机客户端的域名解析数量和流量
+	file.GetDb().JsonDb.Hosts.Range(func(key, value interface{}) bool {
+		v := value.(*file.Host)
+		if v.Client.Id == common.LOCALHOST_CLIENT_ID {
+			hostCount++
+			inletFlow += v.Flow.InletFlow
+			exportFlow += v.Flow.ExportFlow
+		}
+		return true
+	})
+
+	localClient.MaxTunnelNum = tunnelCount + hostCount
+	localClient.Flow.InletFlow = inletFlow
+	localClient.Flow.ExportFlow = exportFlow
 }
 
 func dealClientData() {

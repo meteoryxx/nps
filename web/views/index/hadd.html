@@ -183,6 +183,7 @@
 
     function getClientList() {
         $("select[name='client_id']").empty();
+        
         $.ajax({
             type: "POST",
             url: "{{.web_base_url}}/client/list", // 服务器数据的加载地址
@@ -196,6 +197,8 @@
                         $("select[name='client_id']").append(option);
                     }
                 }
+                // 默认选择本机选项
+                $("select[name='client_id']").val("-1");
             }
         });
     }

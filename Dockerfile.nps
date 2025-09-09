@@ -1,7 +1,10 @@
 FROM golang:1.22 as builder
-ARG GOPROXY=direct
+ARG GOPROXY=https://goproxy.cn,direct
+ARG GOSUMDB=sum.golang.google.cn
 WORKDIR /go/src/ehang.io/nps
 COPY . .
+RUN go env -w GOPROXY=${GOPROXY}
+RUN go env -w GOSUMDB=${GOSUMDB}
 RUN go get -d -v ./...
 RUN CGO_ENABLED=0 go build -ldflags="-w -s -extldflags -static" ./cmd/nps/nps.go
 

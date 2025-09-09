@@ -24,8 +24,8 @@ func (s *IndexController) getClientOrCreateLocalhost(clientId int) (*file.Client
 			VerifyKey: "localhost",
 			Status:    true,
 			IsConnect: true,
-			NoStore:   true, // 不存储到文件
-			NoDisplay: true, // 不在客户端列表中显示
+			NoStore:   true,  // 不存储到文件
+			NoDisplay: false, // 不在客户端列表中显示
 			Flow:      &file.Flow{},
 			Cnf:       &file.Config{},
 		}
@@ -310,11 +310,19 @@ func (s *IndexController) AddHost() {
 		s.SetInfo("add host")
 		s.display("index/hadd")
 	} else {
+		clientId := s.GetIntNoErr("client_id")
 		id := int(file.GetDb().JsonDb.GetHostId())
+
+		// 判断是否为本机客户端，如果是则自动设置LocalProxy为true
+		localProxy := s.GetBoolNoErr("local_proxy")
+		if clientId == common.LOCALHOST_CLIENT_ID {
+			localProxy = true
+		}
+
 		h := &file.Host{
 			Id:                   id,
 			Host:                 s.getEscapeString("host"),
-			Target:               &file.Target{TargetStr: s.getEscapeString("target"), LocalProxy: s.GetBoolNoErr("local_proxy")},
+			Target:               &file.Target{TargetStr: s.getEscapeString("target"), LocalProxy: localProxy},
 			HeaderChange:         s.getEscapeString("header"),
 			HostChange:           s.getEscapeString("hostchange"),
 			Remark:               s.getEscapeString("remark"),
@@ -327,7 +335,7 @@ func (s *IndexController) AddHost() {
 			BypassGlobalPassword: s.GetBoolNoErr("bypass_global_password"),
 		}
 		var err error
-		if h.Client, err = file.GetDb().GetClient(s.GetIntNoErr("client_id")); err != nil {
+		if h.Client, err = s.getClientOrCreateLocalhost(clientId); err != nil {
 			s.AjaxErr("add error the client can not be found")
 		}
 		if h.Client.MaxTunnelNum != 0 && h.Client.GetTunnelNum() >= h.Client.MaxTunnelNum {
@@ -366,7 +374,7 @@ func (s *IndexController) EditHost() {
 					return
 				}
 			}
-			if client, err := file.GetDb().GetClient(s.GetIntNoErr("client_id")); err != nil {
+			if client, err := s.getClientOrCreateLocalhost(s.GetIntNoErr("client_id")); err != nil {
 				s.AjaxErr("modified error,the client is not exist")
 			} else {
 				h.Client = client
@@ -380,7 +388,14 @@ func (s *IndexController) EditHost() {
 			h.Scheme = s.getEscapeString("scheme")
 			h.KeyFilePath = s.getEscapeString("key_file_path")
 			h.CertFilePath = s.getEscapeString("cert_file_path")
-			h.Target.LocalProxy = s.GetBoolNoErr("local_proxy")
+
+			// 判断是否为本机客户端，如果是则自动设置LocalProxy为true
+			clientId := s.GetIntNoErr("client_id")
+			localProxy := s.GetBoolNoErr("local_proxy")
+			if clientId == common.LOCALHOST_CLIENT_ID {
+				localProxy = true
+			}
+			h.Target.LocalProxy = localProxy
 			h.AutoHttps = s.GetBoolNoErr("AutoHttps")
 			h.BypassGlobalPassword = s.GetBoolNoErr("bypass_global_password")
 			file.GetDb().JsonDb.StoreHostToJsonFile()
